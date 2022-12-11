@@ -22,6 +22,7 @@ func (cfg *Config) Reload() {
 	data, err := os.ReadFile("zynx.json")
 	if err != nil {
 		fmt.Println("Read File Error, Use Default Config")
+		return
 	}
 	err = json.Unmarshal(data, &cfg)
 	if err != nil {
