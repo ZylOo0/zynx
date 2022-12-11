@@ -3,9 +3,6 @@ package znet
 import (
 	"fmt"
 	"net"
-	"zyloo.com/zinx/utils"
-
-	"zyloo.com/zinx/ziface"
 )
 
 type Server struct {
@@ -13,21 +10,21 @@ type Server struct {
 	IPVersion   string
 	IP          string
 	Port        int
-	MsgHandler  ziface.IMsgHandle
-	ConnMgr     ziface.IConnManager
-	OnConnStart func(conn ziface.IConnection)
-	OnConnStop  func(conn ziface.IConnection)
+	Router      *Router
+	ConnMgr     *ConnManager
+	OnConnStart func(conn *Connection)
+	OnConnStop  func(conn *Connection)
 }
 
 func (s *Server) Start() {
-	fmt.Printf("[Zinx] Server Name: %s, listening at IP: %s, Port: %d is starting\n",
-		utils.GlobalObject.Name, utils.GlobalObject.Host, utils.GlobalObject.TcpPort)
-	fmt.Printf("[Zinx] Version %s, MaxConn:%d, MaxPackageSize:%d\n",
-		utils.GlobalObject.Version, utils.GlobalObject.MaxConn, utils.GlobalObject.MaxPackageSize)
+	fmt.Printf("[Zynx] Server Name: %s, listening at IP: %s, Port: %d is starting\n",
+		config.Name, config.Host, config.TcpPort)
+	fmt.Printf("[Zynx] Version %s, MaxConn:%d, MaxDataLen:%d\n",
+		config.Version, config.MaxConn, config.MaxDataLen)
 
 	go func() {
 		// 开启工作池
-		s.MsgHandler.StartWorkerPool()
+		s.Router.StartWorkerPool()
 
 		// TCPAddr
 		addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
@@ -43,7 +40,7 @@ func (s *Server) Start() {
 			return
 		}
 
-		fmt.Println("start Zinx server ", s.Name, " success, Listening...")
+		fmt.Println("start Zynx server ", s.Name, " success, Listening...")
 		var cid uint32
 		cid = 0
 
@@ -55,14 +52,13 @@ func (s *Server) Start() {
 				continue
 			}
 
-			if s.ConnMgr.Len() >= utils.GlobalObject.MaxConn {
-				// TODO 给客户反馈超出最大连接数
-				fmt.Println("===== Too Many Connections, MaxConn = ", utils.GlobalObject.MaxConn)
+			if s.ConnMgr.Len() >= config.MaxConn {
+				fmt.Println("===== Too Many Connections, MaxConn = ", config.MaxConn)
 				conn.Close()
 				continue
 			}
 
-			dealConn := NewConnection(s, conn, cid, s.MsgHandler)
+			dealConn := NewConnection(s, conn, cid, s.Router)
 			cid++
 
 			go dealConn.Start()
@@ -71,7 +67,7 @@ func (s *Server) Start() {
 }
 
 func (s *Server) Stop() {
-	fmt.Println("[STOP] Zinx server name ", s.Name)
+	fmt.Println("[STOP] Zynx server name ", s.Name)
 	s.ConnMgr.ClearConn()
 }
 
@@ -81,44 +77,44 @@ func (s *Server) Serve() {
 	select {}
 }
 
-func (s *Server) AddRouter(msgID uint32, router ziface.IRouter) {
-	s.MsgHandler.AddRouter(msgID, router)
-	fmt.Println("Add Router Success!!")
+func (s *Server) AddHandler(msgID uint32, handler Handler) {
+	s.Router.AddHandler(msgID, handler)
+	fmt.Println("Add Handler Success!!")
 }
 
-func (s *Server) GetConnMgr() ziface.IConnManager {
+func (s *Server) GetConnMgr() *ConnManager {
 	return s.ConnMgr
 }
 
-func NewServer() ziface.IServer {
+func NewServer() *Server {
 	s := &Server{
-		Name:       utils.GlobalObject.Name,
-		IPVersion:  "tcp4",
-		IP:         utils.GlobalObject.Host,
-		Port:       utils.GlobalObject.TcpPort,
-		MsgHandler: NewMsgHandle(),
-		ConnMgr:    NewConnManager(),
+		Name:      config.Name,
+		IPVersion: "tcp4",
+		IP:        config.Host,
+		Port:      config.TcpPort,
+		Router:    NewRouter(),
+		ConnMgr:   NewConnManager(),
 	}
 
 	return s
 }
 
-func (s *Server) SetOnConnStart(hookFunc func(conn ziface.IConnection)) {
+func (s *Server) SetOnConnStart(hookFunc func(conn *Connection)) {
 	s.OnConnStart = hookFunc
 }
 
-func (s *Server) SetOnConnStop(hookFunc func(conn ziface.IConnection)) {
+func (s *Server) SetOnConnStop(hookFunc func(conn *Connection)) {
 	s.OnConnStop = hookFunc
 }
 
-func (s *Server) CallOnConnStart(conn ziface.IConnection) {
+func (s *Server) CallOnConnStart(conn *Connection) {
 	if s.OnConnStart != nil {
 		fmt.Println("----- Call OnConnStart() -----")
 		s.OnConnStart(conn)
 	}
 }
 
-func (s *Server) CallOnConnStop(conn ziface.IConnection) {
+func (s *Server) CallOnConnStop(conn *Connection) {
 	if s.OnConnStart != nil {
 		fmt.Println("----- Call OnConnStop() -----")
 		s.OnConnStop(conn)

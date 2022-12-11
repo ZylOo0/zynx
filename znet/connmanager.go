@@ -4,21 +4,20 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"zyloo.com/zinx/ziface"
 )
 
 type ConnManager struct {
-	connections map[uint32]ziface.IConnection
+	connections map[uint32]*Connection
 	connLock    sync.RWMutex
 }
 
 func NewConnManager() *ConnManager {
 	return &ConnManager{
-		connections: make(map[uint32]ziface.IConnection),
+		connections: make(map[uint32]*Connection),
 	}
 }
 
-func (connMgr *ConnManager) Add(conn ziface.IConnection) {
+func (connMgr *ConnManager) Add(conn *Connection) {
 	connMgr.connLock.Lock()
 	defer connMgr.connLock.Unlock()
 
@@ -26,7 +25,7 @@ func (connMgr *ConnManager) Add(conn ziface.IConnection) {
 	fmt.Println("connID = ", conn.GetConnID(), " added to ConnManager successfully: conn num = ", connMgr.Len())
 }
 
-func (connMgr *ConnManager) Remove(conn ziface.IConnection) {
+func (connMgr *ConnManager) Remove(conn *Connection) {
 	connMgr.connLock.Lock()
 	defer connMgr.connLock.Unlock()
 
@@ -34,7 +33,7 @@ func (connMgr *ConnManager) Remove(conn ziface.IConnection) {
 	fmt.Println("connID = ", conn.GetConnID(), " removed from ConnManager successfully: conn num = ", connMgr.Len())
 }
 
-func (connMgr *ConnManager) Get(connID uint32) (ziface.IConnection, error) {
+func (connMgr *ConnManager) Get(connID uint32) (*Connection, error) {
 	connMgr.connLock.RLock()
 	defer connMgr.connLock.RUnlock()
 

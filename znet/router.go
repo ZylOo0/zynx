@@ -1,12 +1,69 @@
 package znet
 
-import "zyloo.com/zinx/ziface"
+import (
+	"fmt"
+	"strconv"
+)
 
-// 实现 Router 时，先嵌入这个 BaseRouter 基类，然后根据需要对这个基类的方法重写
-type BaseRouter struct{}
+// Router 存储各种 Message ID 对应的 Handler
+// 并且将 Request 分配给 Worker
+type Router struct {
+	Handlers       map[uint32]Handler // msgID 对应的处理方法
+	TaskQueue      []chan *Request
+	WorkerPoolSize uint32
+}
 
-func (br *BaseRouter) PreHandle(request ziface.IRequest) {}
+func NewRouter() *Router {
+	return &Router{
+		Handlers:       make(map[uint32]Handler),
+		WorkerPoolSize: config.WorkerPoolSize,
+		TaskQueue:      make([]chan *Request, config.WorkerPoolSize),
+	}
+}
 
-func (br *BaseRouter) Handle(request ziface.IRequest) {}
+func (r *Router) TriggerHandler(request *Request) {
+	handler, ok := r.Handlers[request.GetMsgID()]
+	if !ok {
+		fmt.Println("handler msgID = ", request.GetMsgID(), " is NOT FOUND! Need register!")
+		return
+	}
+	handler.PreHandle(request)
+	handler.InHandle(request)
+	handler.PostHandle(request)
+}
 
-func (br *BaseRouter) PostHandle(request ziface.IRequest) {}
+func (r *Router) AddHandler(msgID uint32, handler Handler) {
+	if _, ok := r.Handlers[msgID]; ok { // ID 已经注册
+		panic("repeat api, msgID = " + strconv.Itoa(int(msgID)))
+	}
+
+	r.Handlers[msgID] = handler
+	fmt.Println("Add handler MsgID = ", msgID, "success!")
+}
+
+func (r *Router) StartWorkerPool() {
+	for i := 0; i < int(r.WorkerPoolSize); i++ {
+		r.TaskQueue[i] = make(chan *Request, config.MaxWorkerTaskLen)
+		go r.StartOneWorker(i, r.TaskQueue[i])
+	}
+}
+
+func (r *Router) StartOneWorker(workerID int, taskQueue chan *Request) {
+	fmt.Println("Worker ID = ", workerID, "started...")
+
+	for {
+		select {
+		case request := <-taskQueue:
+			r.TriggerHandler(request)
+		}
+	}
+}
+
+func (r *Router) SendRequestToTaskQueue(request *Request) {
+	// 根据 ConnID 分配
+	workerID := request.GetConnection().GetConnID() % r.WorkerPoolSize
+	fmt.Println("Add ConnID = ", request.GetConnection().GetConnID(),
+		"request MsgID = ", request.GetMsgID(),
+		"to WorkerID = ", workerID)
+	r.TaskQueue[workerID] <- request
+}

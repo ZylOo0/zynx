@@ -6,32 +6,30 @@ import (
 	"io"
 	"net"
 	"sync"
-	"zyloo.com/zinx/utils"
-	"zyloo.com/zinx/ziface"
 )
 
 type Connection struct {
-	TcpServer    ziface.IServer
+	TcpServer    *Server
 	Conn         *net.TCPConn
 	ConnID       uint32
 	isClosed     bool
 	ExitChan     chan bool   // 用于告知当前连接已经停止(由 Reader 告知 Writer)
 	msgChan      chan []byte // 用于读写协程的通信
-	MsgHandler   ziface.IMsgHandle
+	Router       *Router
 	property     map[string]interface{}
 	propertyLock sync.RWMutex
 }
 
-func NewConnection(server ziface.IServer, conn *net.TCPConn, connID uint32, handle ziface.IMsgHandle) *Connection {
+func NewConnection(server *Server, conn *net.TCPConn, connID uint32, router *Router) *Connection {
 	c := &Connection{
-		TcpServer:  server,
-		Conn:       conn,
-		ConnID:     connID,
-		MsgHandler: handle,
-		isClosed:   false,
-		msgChan:    make(chan []byte),
-		ExitChan:   make(chan bool, 1),
-		property:   make(map[string]interface{}),
+		TcpServer: server,
+		Conn:      conn,
+		ConnID:    connID,
+		Router:    router,
+		isClosed:  false,
+		msgChan:   make(chan []byte),
+		ExitChan:  make(chan bool, 1),
+		property:  make(map[string]interface{}),
 	}
 
 	c.TcpServer.GetConnMgr().Add(c)
@@ -45,39 +43,20 @@ func (c *Connection) StartReader() {
 	defer c.Stop()
 
 	for {
-		dp := NewDataPack()
-
-		headData := make([]byte, dp.GetHeadLen())
-		if _, err := io.ReadFull(c.GetTCPConnection(), headData); err != nil {
-			fmt.Println("read msg head error", err)
-			break
-		}
-
-		msg, err := dp.Unpack(headData)
+		msg, err := c.ReadMsg()
 		if err != nil {
-			fmt.Println("unpack error", err)
-			break
+			fmt.Println("Connection ", c.ConnID, " receive msg error")
 		}
-
-		var data []byte
-		if msg.GetMsgLen() > 0 {
-			data = make([]byte, msg.GetMsgLen())
-			if _, err := io.ReadFull(c.GetTCPConnection(), data); err != nil {
-				fmt.Println("read msg data error", err)
-				break
-			}
-		}
-		msg.SetData(data)
 
 		req := Request{
 			conn: c,
 			msg:  msg,
 		}
 
-		if utils.GlobalObject.WorkerPoolSize > 0 {
-			c.MsgHandler.SendMsgToTaskQueue(&req)
+		if config.WorkerPoolSize > 0 {
+			c.Router.SendRequestToTaskQueue(&req)
 		} else {
-			go c.MsgHandler.DoMsgHandler(&req)
+			fmt.Println("worker pool size < 0")
 		}
 	}
 }
@@ -119,7 +98,10 @@ func (c *Connection) Stop() {
 
 	c.TcpServer.CallOnConnStop(c)
 
-	c.Conn.Close()
+	err := c.Conn.Close()
+	if err != nil {
+		fmt.Println("TCP Connection Close() error, ", err)
+	}
 
 	// 告知 Writer 关闭
 	c.ExitChan <- true
@@ -142,14 +124,13 @@ func (c *Connection) RemoteAddr() net.Addr {
 	return c.Conn.RemoteAddr()
 }
 
-func (c *Connection) SendMsg(msgId uint32, data []byte) error {
+func (c *Connection) SendMsgToWriter(msgId uint32, data []byte) error { // 由用户使用
 	if c.isClosed == true {
-		return errors.New("Connection closed when sending msg")
+		return errors.New("connection is closed when sending msg")
 	}
 
-	dp := NewDataPack()
-
-	binaryMsg, err := dp.Pack(NewMessage(msgId, data))
+	msg := NewMessage(msgId, data)
+	binaryMsg, err := Pack(msg)
 	if err != nil {
 		fmt.Println("Pack error msg id = ", msgId)
 	}
@@ -157,6 +138,29 @@ func (c *Connection) SendMsg(msgId uint32, data []byte) error {
 	c.msgChan <- binaryMsg
 
 	return nil
+}
+
+func (c *Connection) ReadMsg() (*Message, error) {
+	head := make([]byte, headLength)
+	if _, err := io.ReadFull(c.GetTCPConnection(), head); err != nil {
+		fmt.Println("read msg head error", err)
+	}
+
+	msg, err := Unpack(head)
+	if err != nil {
+		fmt.Println("unpack error", err)
+	}
+
+	var data []byte
+	if msg.GetDataLen() > 0 {
+		data = make([]byte, msg.GetDataLen())
+		if _, err := io.ReadFull(c.GetTCPConnection(), data); err != nil {
+			fmt.Println("read msg data error", err)
+		}
+	}
+	msg.SetData(data)
+
+	return msg, nil
 }
 
 func (c *Connection) SetProperty(key string, value interface{}) {

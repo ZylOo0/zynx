@@ -1,13 +1,11 @@
 package znet
 
-import "zyloo.com/zinx/ziface"
-
 type Request struct {
-	conn ziface.IConnection // 已经与客户端建立好的连接
-	msg  ziface.IMessage
+	conn *Connection // 已经与客户端建立好的连接
+	msg  *Message
 }
 
-func (r *Request) GetConnection() ziface.IConnection {
+func (r *Request) GetConnection() *Connection {
 	return r.conn
 }
 
