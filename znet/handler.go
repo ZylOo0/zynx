@@ -6,10 +6,10 @@ type Handler interface {
 	PostHandle(request *Request)
 }
 
-//type HandlerBase struct{}
+//type VHandler struct{}
 //
-//func (h *HandlerBase) PreHandle(request *Request) {}
+//func (h *VHandler) PreHandle(request *Request) {}
 //
-//func (h *HandlerBase) InHandle(request *Request) {}
+//func (h *VHandler) InHandle(request *Request) {}
 //
-//func (h *HandlerBase) PostHandle(request *Request) {}
+//func (h *VHandler) PostHandle(request *Request) {}

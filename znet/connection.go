@@ -37,6 +37,8 @@ func NewConnection(server *Server, conn *net.TCPConn, connID uint32, router *Rou
 	return c
 }
 
+var reqID uint32 = 0
+
 func (c *Connection) StartReader() {
 	fmt.Println("[Reader GoRoutine is running...]")
 	defer fmt.Println("[Reader exits!], connID = ", c.ConnID, ", remote addr is", c.RemoteAddr().String())
@@ -46,12 +48,15 @@ func (c *Connection) StartReader() {
 		msg, err := c.ReadMsg()
 		if err != nil {
 			fmt.Println("Connection ", c.ConnID, " receive msg error")
+			return
 		}
 
 		req := Request{
+			id:   reqID,
 			conn: c,
 			msg:  msg,
 		}
+		reqID++
 
 		if config.WorkerPoolSize > 0 {
 			c.Router.SendRequestToTaskQueue(&req)
@@ -141,9 +146,10 @@ func (c *Connection) SendMsgToWriter(msgId uint32, data []byte) error { // ç”±ç”
 }
 
 func (c *Connection) ReadMsg() (*Message, error) {
-	head := make([]byte, headLength)
+	head := make([]byte, HeadLength)
 	if _, err := io.ReadFull(c.GetTCPConnection(), head); err != nil {
 		fmt.Println("read msg head error", err)
+		return nil, err
 	}
 
 	msg, err := Unpack(head)

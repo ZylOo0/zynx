@@ -60,10 +60,9 @@ func (r *Router) StartOneWorker(workerID int, taskQueue chan *Request) {
 }
 
 func (r *Router) SendRequestToTaskQueue(request *Request) {
-	// 根据 ConnID 分配
-	workerID := request.GetConnection().GetConnID() % r.WorkerPoolSize
-	fmt.Println("Add ConnID = ", request.GetConnection().GetConnID(),
-		"request MsgID = ", request.GetMsgID(),
+	workerID := request.GetReqID() % r.WorkerPoolSize
+	fmt.Println("Add ReqID = ", request.GetReqID(),
+		"MsgID = ", request.GetMsgID(),
 		"to WorkerID = ", workerID)
 	r.TaskQueue[workerID] <- request
 }

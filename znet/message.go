@@ -44,7 +44,7 @@ func (m *Message) SetDataLen(len uint32) {
 	m.DataLen = len
 }
 
-const headLength int = 8
+const HeadLength int = 8
 
 func Pack(msg *Message) ([]byte, error) {
 	dataBuff := bytes.NewBuffer([]byte{})

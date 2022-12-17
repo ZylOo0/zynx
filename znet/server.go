@@ -22,48 +22,46 @@ func (s *Server) Start() {
 	fmt.Printf("[Zynx] Version %s, MaxConn:%d, MaxDataLen:%d\n",
 		config.Version, config.MaxConn, config.MaxDataLen)
 
-	go func() {
-		// 开启工作池
-		s.Router.StartWorkerPool()
+	// 开启工作池
+	s.Router.StartWorkerPool()
 
-		// TCPAddr
-		addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
+	// TCPAddr
+	addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
+	if err != nil {
+		fmt.Println("resolve tcp addr error: ", err)
+		return
+	}
+
+	// TCPListener
+	listener, err := net.ListenTCP(s.IPVersion, addr)
+	if err != nil {
+		fmt.Println("listen ", s.IPVersion, "err", err)
+		return
+	}
+
+	fmt.Println("start Zynx server ", s.Name, " success, Listening...")
+	var cid uint32
+	cid = 0
+
+	for {
+		// TCPConn
+		conn, err := listener.AcceptTCP()
 		if err != nil {
-			fmt.Println("resolve tcp addr error: ", err)
-			return
+			fmt.Println("Accept err", err)
+			continue
 		}
 
-		// TCPListener
-		listener, err := net.ListenTCP(s.IPVersion, addr)
-		if err != nil {
-			fmt.Println("listen ", s.IPVersion, "err", err)
-			return
+		if s.ConnMgr.Len() >= config.MaxConn {
+			fmt.Println("===== Too Many Connections, MaxConn = ", config.MaxConn)
+			conn.Close()
+			continue
 		}
 
-		fmt.Println("start Zynx server ", s.Name, " success, Listening...")
-		var cid uint32
-		cid = 0
+		dealConn := NewConnection(s, conn, cid, s.Router)
+		cid++
 
-		for {
-			// TCPConn
-			conn, err := listener.AcceptTCP()
-			if err != nil {
-				fmt.Println("Accept err", err)
-				continue
-			}
-
-			if s.ConnMgr.Len() >= config.MaxConn {
-				fmt.Println("===== Too Many Connections, MaxConn = ", config.MaxConn)
-				conn.Close()
-				continue
-			}
-
-			dealConn := NewConnection(s, conn, cid, s.Router)
-			cid++
-
-			go dealConn.Start()
-		}
-	}()
+		go dealConn.Start()
+	}
 }
 
 func (s *Server) Stop() {
